@@ -1,0 +1,9 @@
+.env
+__pycache__/
+*.pyc
+vectordb/
+chroma_db/
+*.egg-info/
+.ipynb_checkpoints/
+
+.venv/
