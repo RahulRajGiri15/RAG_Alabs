@@ -1,111 +1,97 @@
-# RAG Document Chatbot — Technical Report
+Document-Based RAG Chatbot with Streaming Responses
 
-**Assignment:** Junior AI Engineer — Amlgo Labs  
-**Project:** Fine-Tuned RAG Chatbot with Streaming Responses  
+This project is an AI-powered chatbot designed to answer user questions strictly based on the content of uploaded documents. It follows a Retrieval-Augmented Generation (RAG) approach, where relevant information is first retrieved from documents and then used by a large language model to generate accurate, grounded responses.
+The application is built using Streamlit, ChromaDB, and LLaMA 3.3 70B via the Groq API, with real-time streaming support.
+Demo Video:
+https://drive.google.com/file/d/1bV4zeH3EUh5dmkZ3o5ymQI9GCzOMFzwF/view?usp=sharing
 
----
+System Architecture
 
-## 1. Document Structure & Chunking Logic
+The system architecture is designed as a pipeline that processes user queries step by step. When a user submits a question through the Streamlit interface, the query is converted into an embedding and passed to a semantic retriever. The retriever searches the ChromaDB vector database to find the most relevant document chunks based on similarity.
+The top relevant chunks are then forwarded to the generation module. This module uses the Groq API with the LLaMA 3.3 70B model to generate a response. The answer is streamed token by token back to the user, making the interaction smooth and interactive.
 
-### Document Overview
-The system processes an **eBay User Agreement** document (~10,500+ words, 20 pages) covering Terms & Conditions, Privacy Policies, and Legal Contracts — typical legal documents with dense, structured text.
 
-### Chunking Strategy
-Documents are split using **RecursiveCharacterTextSplitter** from LangChain with:
-- **Chunk size:** 800 characters (~150-200 words)
-- **Chunk overlap:** 100 characters (ensures context continuity across boundaries)
-- **Separators:** `["\n\n", "\n", ". ", " ", ""]` — sentence-aware splitting that respects paragraph and sentence boundaries
+Project Structure
 
-This produces chunks in the **100-200 word range**, with most chunks falling between 100-135 words. The sentence-aware separators ensure chunks don't break mid-sentence, preserving semantic coherence. Each chunk is assigned a unique `chunk_id` and retains metadata (source file, page number) for traceability.
+The project is organized in a modular way to keep the pipeline clean and maintainable.
+├── data/               # Input PDF documents
+├── chunks/             # Extracted and processed text chunks (JSON)
+├── vectordb/           # Persistent ChromaDB storage
+├── notebooks/          # Experiments and testing notebooks
+├── src/
+│   ├── config.py       # Global configuration
+│   ├── embedder.py     # Embedding generation logic
+│   ├── vector_store.py # ChromaDB integration
+│   ├── retriever.py    # Semantic search module
+│   ├── generator.py    # Groq API + streaming logic
+│   └── rag_pipeline.py # End-to-end RAG pipeline
+├── app.py              # Streamlit chatbot interface
+├── ingest.py           # Document ingestion script
+├── requirements.txt
+└── README.md
 
----
 
-## 2. Embedding Model & Vector Database
+Setup and Installation
+1. Install Required Dependencies
+pip install -r requirements.txt
 
-### Embedding Model: `all-MiniLM-L6-v2`
-- **Type:** Sentence Transformer (HuggingFace)
-- **Dimensions:** 384
-- **Why chosen:** Fast inference, small model size (~80MB), and strong performance on semantic similarity benchmarks. Suitable for a lightweight RAG system without requiring GPU resources.
 
-### Vector Database: ChromaDB
-- **Type:** Embedded vector database (no server setup needed)
-- **Storage:** Persistent on disk (`vectordb/` directory)
-- **Similarity metric:** Cosine similarity (default)
-- **Why chosen:** Zero-config setup, Python-native, built-in persistence. Ideal for a standalone demo project where simplicity and portability matter.
+2. Configure Groq API Key
+Visit https://console.groq.com
+Sign up and generate an API key
+Create and update the .env file:
+cp .env.example .env
+# Add your GROQ_API_KEY inside the file
 
----
 
-## 3. Prompt Format & Generation Logic
+3. Add Documents
+Place the PDF files you want the chatbot to reference inside the data/ directory.
 
-### System Prompt
-The LLM receives a system-level instruction that constrains it to answer **only** from the provided context:
+4. Run Document Ingestion
+python ingest.py
 
-```
-You are a helpful document assistant. Answer based ONLY on the provided context.
-If the answer is not in the context, say "I don't have enough information."
-Be concise. Use bullet points when appropriate. Cite relevant sections.
-```
+This step performs the following actions:
+Loads PDF documents from the data/ folder
+Splits text into sentence-aware chunks (around 100–300 words)
+Generates vector embeddings using all-MiniLM-L6-v2
+Stores embeddings in ChromaDB (vectordb/)
+Saves processed chunks in JSON format (chunks/)
 
-### User Prompt Template
-```
-Context from the document:
----
-[Chunk 1] (Source: document1.pdf, Page: 4)
-<chunk content>
+5. Launch the Chatbot
+streamlit run app.py
 
----
-[Chunk 2] ...
----
+Once started, users can ask questions and receive streamed answers grounded in the uploaded documents.
 
-Question: <user query>
+Model and Technology Choices
+Component
+Selected Tool
+Reason
+Embedding Model
+all-MiniLM-L6-v2
+Lightweight, fast, and effective for semantic similarity
+Vector Database
+ChromaDB
+Simple, local, and does not require a separate server
+LLM
+LLaMA 3.3 70B (Groq API)
+High-quality open-source model with fast inference
+Chunking Strategy
+RecursiveCharacterTextSplitter
+Maintains sentence and paragraph structure
 
-Answer based on the context above:
-```
 
-### LLM: LLaMA 3.3 70B via Groq API
-- **Temperature:** 0.3 (low creativity, factual responses)
-- **Max tokens:** 1024
-- **Streaming:** Enabled (token-by-token via `stream=True`)
-- **Why Groq:** Groq provides free API access to open-source LLMs (LLaMA, Mistral) with ultra-fast inference using their custom LPU hardware. It is **not** an LLM itself — it's an inference platform.
+Key Features
+Token-by-token streaming responses for better user experience
+Displays source document chunks with relevance scores
+Prevents hallucinations by answering only from retrieved content
+Sidebar showing model details and indexed chunk count
+Option to clear chat and reset the session
+Sentence-aware document chunking for improved retrieval accuracy
 
----
-
-## 4. Example Queries & Responses
-
-### ✅ Query 1 — Success (Direct Factual Answer)
-**Q:** "What are the fees charged to sellers on eBay?"  
-**A:** The chatbot correctly retrieves chunks from Section 6 (Fees and Taxes) and provides a structured answer about selling fees, payment due dates, and late fee policies. Sources from pages 4-5 are cited.
-
-### ✅ Query 2 — Success (Policy Explanation)
-**Q:** "What happens if my eBay account is suspended?"  
-**A:** The chatbot retrieves relevant chunks about account suspension, policy enforcement, and user violations. It correctly explains that eBay may limit, suspend, or terminate accounts for policy violations.
-
-### ✅ Query 3 — Success (Legal Clause)
-**Q:** "What is the arbitration agreement?"  
-**A:** Accurately retrieves the arbitration clause from Section 19, explaining that users agree to binding arbitration unless they opt out, and that class-action lawsuits are waived.
-
-### ⚠️ Query 4 — Partial Success (Multi-Section Answer)
-**Q:** "What are my rights as a buyer on eBay?"  
-**A:** Retrieves chunks from Purchase Conditions (Section 8) but may miss some buyer protection details scattered across other sections. The top-5 retrieval captures the primary rules but not all edge cases.  
-**Limitation:** Information spread across many sections may not all fit in the top-K retrieval window.
-
-### ❌ Query 5 — Expected Failure (Out-of-Scope)
-**Q:** "What is the weather in New York today?"  
-**A:** The chatbot correctly responds: "I don't have enough information in the document to answer this." — demonstrating the anti-hallucination guard works as intended.
-
----
-
-## 5. Limitations & Known Issues
-
-| Issue | Details |
-|---|---|
-| **No conversation memory** | Each query is independent; the LLM doesn't remember previous Q&A in the session |
-| **Retrieval ceiling** | Top-K=5 may miss relevant chunks when information is scattered across many sections |
-| **Small chunks for legal text** | Legal documents have cross-referencing sections; chunking may break these connections |
-| **API dependency** | Requires active Groq API key and internet connection; no offline fallback |
-| **Hallucination risk** | While minimized by prompt design, the LLM may occasionally paraphrase inaccurately for complex legal clauses |
-| **Single document type** | Only tested with legal/T&C documents; performance on other document types (technical manuals, research papers) is untested |
-
----
-
-*Report prepared for Amlgo Labs AI Engineer Assignment.*
+Example Usage
+The chatbot can answer document-based questions such as:
+“Summarize the key points from this document”
+“What does the document say about a specific topic?”
+“Explain this concept using the provided PDFs”
+ Demo Video:
+https://drive.google.com/file/d/1bV4zeH3EUh5dmkZ3o5ymQI9GCzOMFzwF/view?usp=sharing
